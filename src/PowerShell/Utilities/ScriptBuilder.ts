@@ -22,9 +22,10 @@ export default class ScriptBuilder {
         if (scheme === Constants.UserManagedIdentity && userManagedIdentityResourceId) {
             command += `Connect-AzAccount -Identity -AccountId '${userManagedIdentityResourceId}' | out-null;`
         }
-            if (args.scopeLevel === Constants.Subscription) {
+        if (args.scopeLevel === Constants.Subscription) {
             if (args.scopeLevel === Constants.Subscription && !args.allowNoSubscriptionsLogin) {
                 command += `Set-AzContext -SubscriptionId '${args.subscriptionId}' -TenantId '${tenantId}' | out-null;`;
+            }
         }
         this.script += `try {
             $ErrorActionPreference = "Stop"
