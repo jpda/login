@@ -64,7 +64,7 @@ async function main() {
         }
         core.setFailed(error);
     }
-    finally {
+    finally { 
         // Reset AZURE_HTTP_USER_AGENT
         core.exportVariable('AZURE_HTTP_USER_AGENT', prefix);
         core.exportVariable('AZUREPS_HOST_ENVIRONMENT', azPSHostEnv);
