@@ -22,13 +22,6 @@ async function main() {
 
         azPath = await io.which("az", true);
 
-        let azureSupportedCloudName = new Set([
-            "azureusgovernment",
-            "azurechinacloud",
-            "azuregermancloud",
-            "azurecloud",
-            "azurestack"]);
-
         let output: string = "";
         const execOptions: any = {
             listeners: {
@@ -43,217 +36,24 @@ async function main() {
 
         let creds = core.getInput('creds');
         const useManagedIdentity = core.getInput('enable-managed-identity').toLowerCase() === "true";
-        const useUserManagedIdentity = core.getInput('user-managed-identity-client-id');
-        const userManagedIdentityResourceId = core.getInput('user-managed-identity-resource-id');
-        const allowNoSubscriptionsLogin = core.getInput('allow-no-subscriptions').toLowerCase() === "true";
-        const enableAzPSSession = core.getInput('enable-AzPSSession').toLowerCase() === "true";
 
-        let azPwshLogin: IAzurePowerShellSession;
-        console.log(`Preparing to login. Managed identity: ${useManagedIdentity}; userManaged: ${userManagedIdentityResourceId ? true : false}; enablePs: ${enableAzPSSession}`);
+        let loginProvider: ILoginProvider;
+
+        console.log(`Preparing to login. Managed identity: ${useManagedIdentity}`);
 
         if (!useManagedIdentity && !creds) {
             throw new Error("Managed identity is not enabled. Service principal authentication requires a creds object, which was not supplied.");
         }
-        if (!useManagedIdentity) { // use service principal defined in creds object
-            let creds = core.getInput('creds', { required: true });
-            let secrets = new SecretParser(creds, FormatType.JSON);
-            let servicePrincipalId = secrets.getSecret("$.clientId", false);
-            let servicePrincipalKey = secrets.getSecret("$.clientSecret", true);
-            let tenantId = secrets.getSecret("$.tenantId", false);
-            let subscriptionId = secrets.getSecret("$.subscriptionId", false);
-            let resourceManagerEndpointUrl = secrets.getSecret("$.resourceManagerEndpointUrl", false);
-            let environment = core.getInput("environment").toLowerCase();
-            const enableAzPSSession = core.getInput('enable-AzPSSession').toLowerCase() === "true";
-            const allowNoSubscriptionsLogin = core.getInput('allow-no-subscriptions').toLowerCase() === "true";
-
-            if (!servicePrincipalId || !servicePrincipalKey || !tenantId) {
-                throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret and tenantId are supplied.");
-            }
-
-            if (!subscriptionId && !allowNoSubscriptionsLogin) {
-                throw new Error("Not all values are present in the creds object. Ensure subscriptionId is supplied.");
-            }
-
-            if (!azureSupportedCloudName.has(environment)) {
-                throw new Error("Unsupported value for environment is passed.The list of supported values for environment are ‘azureusgovernment', ‘azurechinacloud’, ‘azuregermancloud’, ‘azurecloud’ or ’azurestack’");
-            }
-
-            if (!servicePrincipalId || !servicePrincipalKey || !tenantId || !subscriptionId) {
-                throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret, tenantId and subscriptionId are supplied.");
-            }
-
-            // Attempting Az cli login
-            if (environment == "azurestack") {
-                if (!resourceManagerEndpointUrl) {
-                    throw new Error("resourceManagerEndpointUrl is a required parameter when environment is defined.");
-                }
-
-                console.log(`Unregistering cloud: "${environment}" first if it exists`);
-                try {
-                    await executeAzCliCommand(`cloud set -n AzureCloud`, true);
-                    await executeAzCliCommand(`cloud unregister -n "${environment}"`, false);
-                }
-                catch (error) {
-                    console.log(`Ignore cloud not registered error: "${error}"`);
-                }
-
-                console.log(`Registering cloud: "${environment}" with ARM endpoint: "${resourceManagerEndpointUrl}"`);
-                try {
-                    let baseUri = resourceManagerEndpointUrl;
-                    if (baseUri.endsWith('/')) {
-                        baseUri = baseUri.substring(0, baseUri.length - 1); // need to remove trailing / from resourceManagerEndpointUrl to correctly derive suffixes below
-                    }
-                    let suffixKeyvault = ".vault" + baseUri.substring(baseUri.indexOf('.')); // keyvault suffix starts with .
-                    let suffixStorage = baseUri.substring(baseUri.indexOf('.') + 1); // storage suffix starts without .
-                    let profileVersion = "2019-03-01-hybrid";
-                    await executeAzCliCommand(`cloud register -n "${environment}" --endpoint-resource-manager "${resourceManagerEndpointUrl}" --suffix-keyvault-dns "${suffixKeyvault}" --suffix-storage-endpoint "${suffixStorage}" --profile "${profileVersion}"`, false);
-                }
-                catch (error) {
-                    core.error(`Error while trying to register cloud "${environment}": "${error}"`);
-                }
-
-                console.log(`Done registering cloud: "${environment}"`)
-            }
-
-            await executeAzCliCommand(`cloud set -n "${environment}"`, false);
-            console.log(`Done setting cloud: "${environment}"`);
-
-            // Attempting Az cli login
-            if (allowNoSubscriptionsLogin) {
-                let args = [
-                    "--allow-no-subscriptions",
-                    "--service-principal",
-                    "-u", servicePrincipalId,
-                    "-p", servicePrincipalKey,
-                    "--tenant", tenantId
-                ];
-                await executeAzCliCommand(`login`, true, {}, args);
-            }
-            else {
-                let args = [
-                    "--service-principal",
-                    "-u", servicePrincipalId,
-                    "-p", servicePrincipalKey,
-                    "--tenant", tenantId
-                ];
-                await executeAzCliCommand(`login`, true, {}, args);
-                args = [
-                    "--subscription",
-                    subscriptionId
-                ];
-                await executeAzCliCommand(`account set`, true, {}, args);
-            }
-
-            isAzCLISuccess = true;
-            if (enableAzPSSession) {
-                // Attempting Az PS login
-                console.log(`Running Azure PS Login`);
-                const spnlogin: ServicePrincipalLogin = new ServicePrincipalLogin(
-                    servicePrincipalId,
-                    servicePrincipalKey,
-                    tenantId,
-                    subscriptionId,
-                    allowNoSubscriptionsLogin,
-                    environment,
-                    resourceManagerEndpointUrl);
-                await spnlogin.initialize();
-                await spnlogin.login();
-            }
-
-            console.log("Login successful.");
-        } //end SP
-        else { // managed identity
-            var managedIdentityArgs = [
-                "--identity"
-            ];
-
-            // todo: azure stack
-            //let resourceManagerEndpointUrl = secrets.getSecret("$.resourceManagerEndpointUrl", false);
-            let environment = core.getInput("environment").toLowerCase();
-            let subscriptionId = core.getInput("managed-identity-subscription-id");
-            let resourceManagerEndpointUrl = core.getInput("resourceManagerEndpointUrl");
-
-            if (useUserManagedIdentity && userManagedIdentityResourceId) {
-                console.log(`using user assigned managed identity: ${userManagedIdentityResourceId}`);
-                managedIdentityArgs.push("-u", userManagedIdentityResourceId);
-            }
-            if (!subscriptionId) { // no subscription supplied. Not a hard error, but could cause unexpected behavior.
-                console.warn("When using Managed Identity, subscriptionId is not required. However, consider setting subscriptionId explicitly, especially if the managed identity has permission in multiple subscriptions.")
-            }
-
-            if (allowNoSubscriptionsLogin) {
-                managedIdentityArgs.push("--allow-no-subscriptions")
-            }
-
-            if (!subscriptionId && !allowNoSubscriptionsLogin) {
-                throw new Error("Ensure subscriptionId is supplied or set allowNoSubscriptionsLogin to true.");
-            }
-
-            if (!azureSupportedCloudName.has(environment)) {
-                throw new Error("Unsupported value for environment is passed. The list of supported values for environment are ‘azureusgovernment', ‘azurechinacloud’, ‘azuregermancloud’, ‘azurecloud’ or ’azurestack’");
-            }
-
-            // Attempting Az cli login
-            if (environment == "azurestack") {
-                if (!resourceManagerEndpointUrl) {
-                    throw new Error("resourceManagerEndpointUrl is a required parameter when environment is defined.");
-                }
-
-                console.log(`Unregistering cloud: "${environment}" first if it exists`);
-                try {
-                    await executeAzCliCommand(`cloud set -n AzureCloud`, true);
-                    await executeAzCliCommand(`cloud unregister -n "${environment}"`, false);
-                }
-                catch (error) {
-                    console.log(`Ignore cloud not registered error: "${error}"`);
-                }
-
-                console.log(`Registering cloud: "${environment}" with ARM endpoint: "${resourceManagerEndpointUrl}"`);
-                try {
-                    let baseUri = resourceManagerEndpointUrl;
-                    if (baseUri.endsWith('/')) {
-                        baseUri = baseUri.substring(0, baseUri.length - 1); // need to remove trailing / from resourceManagerEndpointUrl to correctly derive suffixes below
-                    }
-                    let suffixKeyvault = ".vault" + baseUri.substring(baseUri.indexOf('.')); // keyvault suffix starts with .
-                    let suffixStorage = baseUri.substring(baseUri.indexOf('.') + 1); // storage suffix starts without .
-                    let profileVersion = "2019-03-01-hybrid";
-                    await executeAzCliCommand(`cloud register -n "${environment}" --endpoint-resource-manager "${resourceManagerEndpointUrl}" --suffix-keyvault-dns "${suffixKeyvault}" --suffix-storage-endpoint "${suffixStorage}" --profile "${profileVersion}"`, false);
-                }
-                catch (error) {
-                    core.error(`Error while trying to register cloud "${environment}": "${error}"`);
-                }
-
-                console.log(`Done registering cloud: "${environment}"`)
-            }
-
-            await executeAzCliCommand(`cloud set -n "${environment}"`, false);
-            console.log(`Done setting cloud: "${environment}"`);
-
-            await executeAzCliCommand(`login`, true, {}, managedIdentityArgs);
-
-            if (subscriptionId) {
-                await executeAzCliCommand(`account set --subscription "${subscriptionId}"`, true);
-            }
-
-            isAzCLISuccess = true;
-            if (enableAzPSSession) {
-                // Attempting Az PS login
-                console.log(`Running Azure PS Login`);
-                if (useManagedIdentity) {
-                    if (useUserManagedIdentity && userManagedIdentityResourceId) {
-                        console.log(`Using user managed identity for powershell login`);
-                        azPwshLogin = new ManagedIdentityLogin(userManagedIdentityResourceId);
-                    } else {
-                        console.log(`Using system managed identity for powershell login`);
-                        azPwshLogin = new ManagedIdentityLogin();
-                    }
-                }
-                await azPwshLogin.initialize();
-                await azPwshLogin.login();
-            }
+        if (useManagedIdentity) {
+            let loginInfo = new ManagedIdentityLoginInfo();
+            loginProvider = new ManagedIdentityAzLoginProvider(loginInfo);
         }
+        else {
+            let loginInfo = new ServicePrincipalLoginInfo();
+            loginProvider = new ServicePrincipalAzLoginProvider(loginInfo);
+        }
+        isAzCLISuccess = await loginProvider.Login();
         console.log("Login successful.");
-
     }
     catch (error) {
         if (!isAzCLISuccess) {
@@ -268,6 +68,311 @@ async function main() {
         // Reset AZURE_HTTP_USER_AGENT
         core.exportVariable('AZURE_HTTP_USER_AGENT', prefix);
         core.exportVariable('AZUREPS_HOST_ENVIRONMENT', azPSHostEnv);
+    }
+}
+
+interface ILoginProvider {
+    AzLoginCommandArgs: any[];
+    Login(): Promise<boolean>;
+    SetPsSession();
+}
+
+class LoginInfo {
+    public AllowNoSubscriptionsLogin: boolean;
+    public EnableAzPsSession: boolean;
+    public SubscriptionId: string;
+    public Environment: string;
+    public ResourceManagerEndpointUrl: string;
+    public TenantId: string;
+
+    public constructor(allowNoSubscriptionsLogin?: boolean, enableAzPsSession?: boolean, subscriptionId?: string, environment?: string, resourceManagerEndpointUrl?: string, tenantId?: string) {
+        this.AllowNoSubscriptionsLogin = allowNoSubscriptionsLogin ? allowNoSubscriptionsLogin : core.getInput('allow-no-subscriptions').toLowerCase() === "true";
+        this.EnableAzPsSession = enableAzPsSession ? enableAzPsSession : core.getInput('enable-AzPSSession').toLowerCase() === "true";
+        this.SubscriptionId = subscriptionId ? subscriptionId : core.getInput('enable-AzPSSession').toLowerCase();
+        this.Environment = environment ? environment : core.getInput('environment').toLowerCase();
+        this.ResourceManagerEndpointUrl = resourceManagerEndpointUrl ? resourceManagerEndpointUrl : core.getInput('environment').toLowerCase();
+        this.TenantId = tenantId ? tenantId : core.getInput('tenantId').toLowerCase();
+    }
+}
+
+class ManagedIdentityLoginInfo extends LoginInfo {
+    public UseUserManagedIdentity: boolean;
+    public UserManagedIdentityResourceId: string;
+
+    constructor(useUserManagedIdentity?: boolean, userManagedIdenityResourceId?: string) {
+        super(
+            core.getInput('allow-no-subscriptions').toLowerCase() === "true",
+            core.getInput('enable-AzPSSession').toLowerCase() === "true",
+            //todo : check this name
+            core.getInput('managed-identity-subscriptionId').toLowerCase(),
+            core.getInput('environment').toLowerCase(),
+            core.getInput('managementEndpointUrl').toLowerCase(),
+            core.getInput('tenantId').toLowerCase()
+        )
+        this.UseUserManagedIdentity =
+            useUserManagedIdentity ? useUserManagedIdentity : core.getInput('enable-managed-identity').toLowerCase() === "true";
+        this.UserManagedIdentityResourceId =
+            userManagedIdenityResourceId ? userManagedIdenityResourceId : core.getInput('user-managed-identity-resource-id');
+    }
+}
+
+class ServicePrincipalLoginInfo extends LoginInfo {
+    public ServicePrincipalId: string;
+    public ServicePrincipalKey: string;
+
+    public constructor(incomingCreds?: string, servicePrincipalId?: string, servicePrincipalKey?: string) {
+        let creds = incomingCreds ? incomingCreds : core.getInput('creds');
+        let secrets = new SecretParser(creds, FormatType.JSON);
+
+        super(
+            core.getInput('allow-no-subscriptions').toLowerCase() === "true",
+            core.getInput('enable-AzPSSession').toLowerCase() === "true",
+            secrets.getSecret('$.subscriptionId').toLowerCase(),
+            core.getInput('environment').toLowerCase(),
+            secrets.getSecret('$.managementEndpointUrl').toLowerCase(),
+            secrets.getSecret('$.tenantId').toLowerCase()
+        )
+
+        this.ServicePrincipalId = servicePrincipalId ? servicePrincipalId : secrets.getSecret("$.clientId", false);
+        this.ServicePrincipalKey = servicePrincipalKey ? servicePrincipalKey : secrets.getSecret("$.clientSecret", true);
+    }
+}
+
+class ManagedIdentityAzLoginProvider implements ILoginProvider {
+    private azureSupportedCloudName = new Set([
+        "azureusgovernment",
+        "azurechinacloud",
+        "azuregermancloud",
+        "azurecloud",
+        "azurestack"]);
+
+    AzLoginCommandArgs: any[];
+    private _info: ManagedIdentityLoginInfo;
+
+    constructor(info: ManagedIdentityLoginInfo) {
+        this._info = info;
+
+        // root msi login
+        this.AzLoginCommandArgs.push("--identity");
+
+        this.Init();
+        this.SetEnvironment();
+        this.ConfigureLogin();
+        this.SetPsSession();
+    }
+
+    private Init() {
+        // no subscription supplied. Not a hard error, but could cause unexpected behavior.
+        if (!this._info.SubscriptionId) {
+            console.warn("When using Managed Identity, subscriptionId is not required. However, consider setting subscriptionId explicitly, especially if the managed identity has permission in multiple subscriptions.")
+        }
+
+        if (!this._info.SubscriptionId && !this._info.AllowNoSubscriptionsLogin) {
+            throw new Error("Ensure subscriptionId is supplied or set allowNoSubscriptionsLogin to true.");
+        }
+
+        if (!this.azureSupportedCloudName.has(this._info.Environment)) {
+            throw new Error("Unsupported value for environment is passed. The list of supported values for environment are ‘azureusgovernment', ‘azurechinacloud’, ‘azuregermancloud’, ‘azurecloud’ or ’azurestack’");
+        }
+
+        if (this._info.AllowNoSubscriptionsLogin) {
+            this.AzLoginCommandArgs.push("--allow-no-subscriptions")
+        }
+    }
+
+    private async SetEnvironment() {
+        if (this._info.Environment == "azurestack") {
+            if (!this._info.ResourceManagerEndpointUrl) {
+                throw new Error("resourceManagerEndpointUrl is a required parameter when environment is defined.");
+            }
+
+            console.log(`Unregistering cloud: "${this._info.Environment}" first if it exists`);
+            try {
+                await executeAzCliCommand(`cloud set -n AzureCloud`, true);
+                await executeAzCliCommand(`cloud unregister -n "${this._info.Environment}"`, false);
+            }
+            catch (error) {
+                console.log(`Ignore cloud not registered error: "${error}"`);
+            }
+
+            console.log(`Registering cloud: "${this._info.Environment}" with ARM endpoint: "${this._info.ResourceManagerEndpointUrl}"`);
+            try {
+                let baseUri = this._info.ResourceManagerEndpointUrl;
+                if (baseUri.endsWith('/')) {
+                    baseUri = baseUri.substring(0, baseUri.length - 1); // need to remove trailing / from resourceManagerEndpointUrl to correctly derive suffixes below
+                }
+                let suffixKeyvault = ".vault" + baseUri.substring(baseUri.indexOf('.')); // keyvault suffix starts with .
+                let suffixStorage = baseUri.substring(baseUri.indexOf('.') + 1); // storage suffix starts without .
+                let profileVersion = "2019-03-01-hybrid";
+                await executeAzCliCommand(`cloud register -n "${this._info.Environment}" --endpoint-resource-manager "${this._info.ResourceManagerEndpointUrl}" --suffix-keyvault-dns "${suffixKeyvault}" --suffix-storage-endpoint "${suffixStorage}" --profile "${profileVersion}"`, false);
+            }
+            catch (error) {
+                core.error(`Error while trying to register cloud "${this._info.Environment}": "${error}"`);
+            }
+
+            console.log(`Done registering cloud: "${this._info.Environment}"`)
+        }
+
+        await executeAzCliCommand(`cloud set -n "${this._info.Environment}"`, false);
+        console.log(`Done setting cloud: "${this._info.Environment}"`);
+    }
+
+    private ConfigureLogin() {
+        var managedIdentityArgs = [];
+
+        if (this._info.UseUserManagedIdentity && this._info.UserManagedIdentityResourceId) {
+            console.log(`using user assigned managed identity: ${this._info.UserManagedIdentityResourceId}`);
+            managedIdentityArgs.push("-u", this._info.UserManagedIdentityResourceId);
+        }
+
+        this.AzLoginCommandArgs.push(managedIdentityArgs);
+    }
+
+    public async Login(): Promise<boolean> {
+        await executeAzCliCommand(`login`, true, {}, this.AzLoginCommandArgs);
+
+        if (this._info.SubscriptionId) {
+            await executeAzCliCommand(`account set --subscription "${this._info.SubscriptionId}"`, true);
+        }
+
+        if (this._info.EnableAzPsSession) {
+            // Attempting Az PS login
+            var psSession = this.SetPsSession();
+            await psSession.initialize();
+            await psSession.login();
+        }
+
+        return true;
+    }
+
+    public SetPsSession(userManagedIdentityResourceId?: string): IAzurePowerShellSession {
+        console.log(`Running Azure PS Login`);
+        var azPwshLogin: IAzurePowerShellSession;
+
+        if (userManagedIdentityResourceId) {
+            console.log(`Using user managed identity for powershell login`);
+            azPwshLogin = new ManagedIdentityLogin(userManagedIdentityResourceId);
+        } else {
+            azPwshLogin = new ManagedIdentityLogin();
+        }
+        return azPwshLogin;
+    }
+}
+
+class ServicePrincipalAzLoginProvider implements ILoginProvider {
+    private azureSupportedCloudName = new Set([
+        "azureusgovernment",
+        "azurechinacloud",
+        "azuregermancloud",
+        "azurecloud",
+        "azurestack"]);
+
+    AzLoginCommandArgs: any[];
+    private _info: ServicePrincipalLoginInfo;
+
+    constructor(info: ServicePrincipalLoginInfo) {
+        this._info = info;
+        this.Init();
+        this.SetEnvironment();
+
+        this.AzLoginCommandArgs.push([
+            "--service-principal",
+            "-u", this._info.ServicePrincipalId,
+            "-p", this._info.ServicePrincipalKey,
+            "--tenant", this._info.TenantId
+        ]);
+    }
+
+    public async Login(): Promise<boolean> {
+        await executeAzCliCommand(`login`, true, {}, this.AzLoginCommandArgs);
+
+        if (this._info.SubscriptionId) {
+            var subscriptionArgs = [
+                "--subscription"
+            ];
+        }
+
+        await executeAzCliCommand(`account set`, true, {}, subscriptionArgs);
+
+        if (this._info.EnableAzPsSession) {
+            // Attempting Az PS login
+            var psSession = this.SetPsSession();
+            await psSession.initialize();
+            await psSession.login();
+        }
+
+        return true;
+    }
+
+    public SetPsSession(): IAzurePowerShellSession {
+        console.log(`Running Azure PS Login`);
+        return new ServicePrincipalLogin(
+            this._info.ServicePrincipalId,
+            this._info.ServicePrincipalKey,
+            this._info.TenantId,
+            this._info.SubscriptionId,
+            this._info.AllowNoSubscriptionsLogin,
+            this._info.Environment,
+            this._info.ResourceManagerEndpointUrl);
+    }
+
+    private Init() {
+        if (!this._info.ServicePrincipalId || !this._info.ServicePrincipalKey || !this._info.TenantId) {
+            throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret and tenantId are supplied.");
+        }
+
+        if (!this._info.SubscriptionId && !this._info.AllowNoSubscriptionsLogin) {
+            throw new Error("Not all values are present in the creds object. Ensure subscriptionId is supplied.");
+        }
+
+        if (!this.azureSupportedCloudName.has(this._info.Environment)) {
+            throw new Error("Unsupported value for environment is passed.The list of supported values for environment are ‘azureusgovernment', ‘azurechinacloud’, ‘azuregermancloud’, ‘azurecloud’ or ’azurestack’");
+        }
+
+        if (!this._info.ServicePrincipalId || !this._info.ServicePrincipalKey || !this._info.TenantId || !this._info.SubscriptionId) {
+            throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret, tenantId and subscriptionId are supplied.");
+        }
+
+        if (this._info.AllowNoSubscriptionsLogin) {
+            this.AzLoginCommandArgs.push("--allow-no-subscriptions")
+        }
+    }
+
+    private async SetEnvironment() {
+        if (this._info.Environment == "azurestack") {
+            if (!this._info.ResourceManagerEndpointUrl) {
+                throw new Error("resourceManagerEndpointUrl is a required parameter when environment is defined.");
+            }
+
+            console.log(`Unregistering cloud: "${this._info.Environment}" first if it exists`);
+            try {
+                await executeAzCliCommand(`cloud set -n AzureCloud`, true);
+                await executeAzCliCommand(`cloud unregister -n "${this._info.Environment}"`, false);
+            }
+            catch (error) {
+                console.log(`Ignore cloud not registered error: "${error}"`);
+            }
+
+            console.log(`Registering cloud: "${this._info.Environment}" with ARM endpoint: "${this._info.ResourceManagerEndpointUrl}"`);
+            try {
+                let baseUri = this._info.ResourceManagerEndpointUrl;
+                if (baseUri.endsWith('/')) {
+                    baseUri = baseUri.substring(0, baseUri.length - 1); // need to remove trailing / from resourceManagerEndpointUrl to correctly derive suffixes below
+                }
+                let suffixKeyvault = ".vault" + baseUri.substring(baseUri.indexOf('.')); // keyvault suffix starts with .
+                let suffixStorage = baseUri.substring(baseUri.indexOf('.') + 1); // storage suffix starts without .
+                let profileVersion = "2019-03-01-hybrid";
+                await executeAzCliCommand(`cloud register -n "${this._info.Environment}" --endpoint-resource-manager "${this._info.ResourceManagerEndpointUrl}" --suffix-keyvault-dns "${suffixKeyvault}" --suffix-storage-endpoint "${suffixStorage}" --profile "${profileVersion}"`, false);
+            }
+            catch (error) {
+                core.error(`Error while trying to register cloud "${this._info.Environment}": "${error}"`);
+            }
+
+            console.log(`Done registering cloud: "${this._info.Environment}"`)
+        }
+
+        await executeAzCliCommand(`cloud set -n "${this._info.Environment}"`, false);
+        console.log(`Done setting cloud: "${this._info.Environment}"`);
     }
 }
 
