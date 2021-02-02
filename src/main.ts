@@ -46,7 +46,7 @@ async function main() {
         }
         if (useManagedIdentity) {
             let loginInfo = new ManagedIdentityLoginInfo();
-            loginProvider = new ManagedIdentityAzLoginProvider(loginInfo);
+            loginProvider = await ManagedIdentityAzLoginProvider.Build(loginInfo);
         }
         else {
             let loginInfo = new ServicePrincipalLoginInfo();
@@ -151,12 +151,19 @@ class ManagedIdentityAzLoginProvider implements ILoginProvider {
 
     constructor(info: ManagedIdentityLoginInfo) {
         this._info = info;
-
         // root msi login
         this.AzLoginCommandArgs.push("--identity");
+    }
 
+    public static async Build(info: ManagedIdentityLoginInfo): Promise<ManagedIdentityAzLoginProvider> {
+        var a = new ManagedIdentityAzLoginProvider(info);
+        await a.Initialize();
+        return a;
+    }
+
+    private async Initialize() {
         this.Init();
-        this.SetEnvironment();
+        await this.SetEnvironment();
         this.ConfigureLogin();
         this.SetPsSession();
     }
