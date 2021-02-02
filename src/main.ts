@@ -218,24 +218,23 @@ class ManagedIdentityAzLoginProvider implements ILoginProvider {
     }
 
     private ConfigureLogin() {
-        var managedIdentityArgs: any[] = [];
-
         if (this._info.UseUserManagedIdentity && this._info.UserManagedIdentityResourceId) {
             console.log(`using user assigned managed identity: ${this._info.UserManagedIdentityResourceId}`);
-            managedIdentityArgs.push("-u", this._info.UserManagedIdentityResourceId);
+            this.AzLoginCommandArgs.push("-u", this._info.UserManagedIdentityResourceId);
         }
-
-        this.AzLoginCommandArgs.push(managedIdentityArgs);
     }
 
     public async Login(): Promise<boolean> {
+        console.log(`attempting login with ${this.AzLoginCommandArgs.join()}`);
         await executeAzCliCommand(`login`, true, {}, this.AzLoginCommandArgs);
 
         if (this._info.SubscriptionId) {
+            console.log(`setting subscription to ${this._info.SubscriptionId}`);
             await executeAzCliCommand(`account set --subscription "${this._info.SubscriptionId}"`, true);
         }
 
         if (this._info.EnableAzPsSession) {
+            console.log(`enabling powershell session`);
             // Attempting Az PS login
             var psSession = this.SetPsSession();
             await psSession.initialize();
@@ -384,6 +383,7 @@ async function executeAzCliCommand(
 
     execOptions.silent = !!silent;
     try {
+        console.log(`executing login: "${azPath}" ${command}`);
         await exec.exec(`"${azPath}" ${command}`, args, execOptions);
     }
     catch (error) {
