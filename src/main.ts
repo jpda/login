@@ -64,7 +64,7 @@ async function main() {
         }
         core.setFailed(error);
     }
-    finally { 
+    finally {
         // Reset AZURE_HTTP_USER_AGENT
         core.exportVariable('AZURE_HTTP_USER_AGENT', prefix);
         core.exportVariable('AZUREPS_HOST_ENVIRONMENT', azPSHostEnv);
@@ -146,7 +146,7 @@ class ManagedIdentityAzLoginProvider implements ILoginProvider {
         "azurecloud",
         "azurestack"]);
 
-    AzLoginCommandArgs: any[];
+    AzLoginCommandArgs: any[] = [];
     private _info: ManagedIdentityLoginInfo;
 
     constructor(info: ManagedIdentityLoginInfo) {
@@ -218,7 +218,7 @@ class ManagedIdentityAzLoginProvider implements ILoginProvider {
     }
 
     private ConfigureLogin() {
-        var managedIdentityArgs = [];
+        var managedIdentityArgs: any[] = [];
 
         if (this._info.UseUserManagedIdentity && this._info.UserManagedIdentityResourceId) {
             console.log(`using user assigned managed identity: ${this._info.UserManagedIdentityResourceId}`);
@@ -267,7 +267,7 @@ class ServicePrincipalAzLoginProvider implements ILoginProvider {
         "azurecloud",
         "azurestack"]);
 
-    AzLoginCommandArgs: any[];
+    AzLoginCommandArgs: any[] = [];
     private _info: ServicePrincipalLoginInfo;
 
     constructor(info: ServicePrincipalLoginInfo) {
