@@ -82,7 +82,7 @@ export async function executeAzCliCommand(
 
     execOptions.silent = !!silent;
     try {
-        console.log(`executing: "${azPath}" ${command} ${args.join()}`);
+        console.log(`executing: "${azPath}" ${command} ${args.join(' ')}`);
         await exec.exec(`"${azPath}" ${command}`, args, execOptions);
     }
     catch (error) {
