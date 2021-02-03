@@ -85,6 +85,15 @@ export abstract class AzLoginProvider implements ILoginProvider {
     }
 
     public async Login(): Promise<boolean> {
+        let output: string = "";
+        const execOptions: any = {
+            listeners: {
+                stdout: (data: Buffer) => {
+                    output += data.toString();
+                }
+            }
+        };
+
         console.log(`Setting environment to ${this._info.Environment}`);
         await this.SetEnvironment();
         console.log(`Environment set to ${this._info.Environment}`);
@@ -95,7 +104,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
         }
 
         console.log(`logging in...`);
-        await executeAzCliCommand(`login`, true, {}, this.AzLoginCommandArgs);
+        await executeAzCliCommand(`login`, true, execOptions, this.AzLoginCommandArgs);
         console.log(`az login succeeded.`);
 
         if (this._info.SubscriptionId) {
@@ -103,7 +112,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
                 "--subscription", this._info.SubscriptionId
             ];
             console.log(`setting subscription context: ${this._info.SubscriptionId}`)
-            await executeAzCliCommand(`account set`, true, {}, subscriptionArgs);
+            await executeAzCliCommand(`account set`, true, execOptions, subscriptionArgs);
             console.log(`subscription set to ${this._info.SubscriptionId}`);
         }
 
