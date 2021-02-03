@@ -105,7 +105,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
 
         console.log(`logging in...`);
         try {
-            await executeAzCliCommand(`login`, true, execOptions, this.AzLoginCommandArgs);
+            await executeAzCliCommand(`login`, false, execOptions, this.AzLoginCommandArgs);
             console.log(output);
         } catch (ex) {
             console.error(ex);
@@ -121,7 +121,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
                 "--subscription", this._info.SubscriptionId
             ];
             console.log(`setting subscription context: ${this._info.SubscriptionId}`)
-            await executeAzCliCommand(`account set`, true, execOptions, subscriptionArgs);
+            await executeAzCliCommand(`account set`, false, execOptions, subscriptionArgs);
             console.log(`subscription set to ${this._info.SubscriptionId}`);
         }
 
