@@ -23,6 +23,8 @@ export abstract class AzLoginProvider implements ILoginProvider {
     constructor(info: ServicePrincipalLoginInfo | ManagedIdentityLoginInfo) {
         this._info = info;
 
+        console.log(`AzLoginProvider created with config: ${JSON.stringify(info)}`);
+
         if (this._info.EnableAzPsSession) {
             this.ConfigureAzPsSession();
         }
