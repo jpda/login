@@ -9,8 +9,8 @@ export class ServicePrincipalAzLoginProvider extends AzLoginProvider {
         super(info);
         this.AzLoginCommandArgs.push([
             "--service-principal",
-            "-u", this._info.ServicePrincipalId,
-            "-p", this._info.ServicePrincipalKey,
+            "--username", this._info.ServicePrincipalId,
+            "--password", this._info.ServicePrincipalKey,
             "--tenant", this._info.TenantId
         ]);
     }
