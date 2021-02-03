@@ -86,6 +86,9 @@ export async function executeAzCliCommand(
         await exec.exec(`"${azPath}" ${command}`, args, execOptions);
     }
     catch (error) {
+        console.error(error);
+        core.setFailed(error);
+        core.error(error);
         throw new Error(error);
     }
 }
