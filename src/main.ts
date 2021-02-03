@@ -5,7 +5,7 @@ import { ManagedIdentityLoginInfo } from './LoginProvider/ManagedIdentityLoginIn
 import { ServicePrincipalLoginInfo } from './LoginProvider/ServicePrincipalLoginInfo';
 import { ManagedIdentityAzLoginProvider } from './LoginProvider/ManagedIdentityAzLoginProvider';
 import { ServicePrincipalAzLoginProvider } from './LoginProvider/ServicePrincipalAzLoginProvider';
-import { ILoginProvider } from './LoginProvider/ILoginProvider';
+import { ILoginProvider } from './LoginProvider/AzLoginProvider';
 
 var azPath: string;
 var prefix = !!process.env.AZURE_HTTP_USER_AGENT ? `${process.env.AZURE_HTTP_USER_AGENT}` : "";
