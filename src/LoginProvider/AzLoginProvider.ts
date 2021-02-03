@@ -73,6 +73,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
     }
 
     private EnsureConfiguration() {
+        console.log(`AzLoginProvider: ensuring configuration...`);
         if (!this._info.SubscriptionId && !this._info.AllowNoSubscriptionsLogin) {
             throw new Error("Not all values are present. Ensure subscriptionId is supplied.");
         }
