@@ -105,6 +105,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
 
         console.log(`logging in...`);
         try {
+            console.log(`login command args: ${JSON.stringify(this.AzLoginCommandArgs)}`);
             await executeAzCliCommand(`login`, false, execOptions, this.AzLoginCommandArgs);
             console.log(output);
         } catch (ex) {
