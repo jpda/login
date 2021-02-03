@@ -104,7 +104,16 @@ export abstract class AzLoginProvider implements ILoginProvider {
         }
 
         console.log(`logging in...`);
-        await executeAzCliCommand(`login`, true, execOptions, this.AzLoginCommandArgs);
+        try {
+            await executeAzCliCommand(`login`, true, execOptions, this.AzLoginCommandArgs);
+            console.log(output);
+        } catch (ex) {
+            console.error(ex);
+            console.log(output);
+            return false;
+        }
+
+        console.log(output);
         console.log(`az login succeeded.`);
 
         if (this._info.SubscriptionId) {
