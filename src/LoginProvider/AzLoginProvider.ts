@@ -1,10 +1,11 @@
 import * as core from '@actions/core';
-import { ServicePrincipalLogin } from '../PowerShell/ServicePrincipalLogin';
-import { ManagedIdentityLogin } from "../PowerShell/ManagedIdentityLogin";
 import { ManagedIdentityLoginInfo } from './ManagedIdentityLoginInfo';
 import { ServicePrincipalLoginInfo } from './ServicePrincipalLoginInfo';
-import { ILoginProvider } from "./ILoginProvider";
 import { executeAzCliCommand } from "../main";
+
+export interface ILoginProvider {
+    Login(): Promise<boolean>;
+}
 
 export abstract class AzLoginProvider implements ILoginProvider {
     protected azureSupportedCloudName = new Set([
@@ -25,8 +26,12 @@ export abstract class AzLoginProvider implements ILoginProvider {
         if (this._info.EnableAzPsSession) {
             this.ConfigureAzPsSession();
         }
-        this.EnsureRequiredBaseValues();
+        this.EnsureConfiguration();
     }
+
+    protected abstract ConfigureAzPsSession(): void;
+
+    protected abstract EnsureRequiredConfiguration(): void;
 
     protected async SetEnvironment() {
         if (this._info.Environment == "azurestack") {
@@ -65,7 +70,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
         console.log(`Done setting cloud: "${this._info.Environment}"`);
     }
 
-    private EnsureRequiredBaseValues() {
+    private EnsureConfiguration() {
         if (!this._info.SubscriptionId && !this._info.AllowNoSubscriptionsLogin) {
             throw new Error("Not all values are present. Ensure subscriptionId is supplied.");
         }
@@ -73,28 +78,7 @@ export abstract class AzLoginProvider implements ILoginProvider {
         if (!this.azureSupportedCloudName.has(this._info.Environment)) {
             throw new Error("Unsupported value for environment is passed. The list of supported values for environment are ‘azureusgovernment', ‘azurechinacloud’, ‘azuregermancloud’, ‘azurecloud’ or ’azurestack’");
         }
-    }
-
-    protected ConfigureAzPsSession() {
-        if (this._info instanceof ServicePrincipalLoginInfo) {
-            console.log(`Using service principal ${this._info.ServicePrincipalId} for powershell`);
-            this.AzurePsSession = new ServicePrincipalLogin(
-                this._info.ServicePrincipalId,
-                this._info.ServicePrincipalKey,
-                this._info.TenantId,
-                this._info.SubscriptionId,
-                this._info.AllowNoSubscriptionsLogin,
-                this._info.Environment,
-                this._info.ResourceManagerEndpointUrl);
-        } else {
-            if (this._info.UserManagedIdentityResourceId) {
-                console.log(`Using user-assigned managed identity for powershell login: ${this._info.UserManagedIdentityResourceId}`);
-                this.AzurePsSession = new ManagedIdentityLogin(this._info.UserManagedIdentityResourceId);
-            } else {
-                console.log(`Using system-assigned managed identity for powershell login`);
-                this.AzurePsSession = new ManagedIdentityLogin();
-            }
-        }
+        this.EnsureRequiredConfiguration();
     }
 
     public async Login(): Promise<boolean> {

@@ -1,12 +1,12 @@
 import { ServicePrincipalLoginInfo } from './ServicePrincipalLoginInfo';
 import { AzLoginProvider } from './AzLoginProvider';
+import { ServicePrincipalLogin } from '../PowerShell/ServicePrincipalLogin';
 
 export class ServicePrincipalAzLoginProvider extends AzLoginProvider {
     protected _info: ServicePrincipalLoginInfo;
 
     constructor(info: ServicePrincipalLoginInfo) {
         super(info);
-        this.EnsureRequiredValues();
         this.AzLoginCommandArgs.push([
             "--service-principal",
             "-u", this._info.ServicePrincipalId,
@@ -15,7 +15,7 @@ export class ServicePrincipalAzLoginProvider extends AzLoginProvider {
         ]);
     }
 
-    private EnsureRequiredValues() {
+    protected EnsureRequiredConfiguration() {
         if (!this._info.ServicePrincipalId || !this._info.ServicePrincipalKey || !this._info.TenantId) {
             throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret and tenantId are supplied.");
         }
@@ -23,5 +23,17 @@ export class ServicePrincipalAzLoginProvider extends AzLoginProvider {
         if (!this._info.ServicePrincipalId || !this._info.ServicePrincipalKey || !this._info.TenantId || !this._info.SubscriptionId) {
             throw new Error("Not all values are present in the creds object. Ensure clientId, clientSecret, tenantId and subscriptionId are supplied.");
         }
+    }
+
+    protected ConfigureAzPsSession() {
+        console.log(`Using service principal ${this._info.ServicePrincipalId} for powershell`);
+        this.AzurePsSession = new ServicePrincipalLogin(
+            this._info.ServicePrincipalId,
+            this._info.ServicePrincipalKey,
+            this._info.TenantId,
+            this._info.SubscriptionId,
+            this._info.AllowNoSubscriptionsLogin,
+            this._info.Environment,
+            this._info.ResourceManagerEndpointUrl);
     }
 }
