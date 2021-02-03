@@ -7,7 +7,7 @@ export class ServicePrincipalAzLoginProvider extends AzLoginProvider {
 
     constructor(info: ServicePrincipalLoginInfo) {
         super(info);
-        this.AzLoginCommandArgs.push([
+        this.AzLoginCommandArgs.concat([
             "--service-principal",
             "--username", this._info.ServicePrincipalId,
             "--password", this._info.ServicePrincipalKey,
